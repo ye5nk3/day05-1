@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>습관 체크</title>
+<style>
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #1f2933;
+  --muted: #6b7280;
+  --line: #d9dde3;
+  --green: #2ea043;
+  --danger: #c0392b;
+  --radius: 10px;
+  --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 { margin: 0 0 16px; font-size: 24px; }
+
+.warning {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
+  background: #fff;
+  font-size: 14px;
+}
+
+.empty { margin: 0 0 16px; color: var(--muted); }
+
+.habits { list-style: none; margin: 0 0 16px; padding: 0; }
+
+.habit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.habit .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.check {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.check[aria-pressed="true"] {
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.delete {
+  flex: none;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.delete:hover { color: var(--danger); }
+
+form { display: flex; gap: 8px; }
+
+form input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+form button {
+  flex: none;
+  height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--green);
+  color: #fff;
+}
+
+form input:disabled, form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.msg { min-height: 1.5em; margin: 8px 0 0; font-size: 14px; color: var(--danger); }
+.limit { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>오늘의 습관</h1>
+
+  <p id="save-warning" class="warning" role="alert" hidden>저장하지 못했어요. 브라우저의 저장 공간 설정을 확인해 주세요.</p>
+
+  <p id="empty" class="empty">아직 습관이 없어요. 아래에서 첫 습관을 추가해 보세요.</p>
+  <ul id="habits" class="habits"></ul>
+
+  <form id="add-form" autocomplete="off">
+    <input id="name-input" type="text" maxlength="20" placeholder="새 습관 이름" aria-label="새 습관 이름">
+    <button type="submit" id="add-button">추가</button>
+  </form>
+  <p id="form-msg" class="msg" role="status"></p>
+  <p id="limit-msg" class="limit" hidden>습관은 최대 10개까지 추가할 수 있어요.</p>
+</main>
+
+<script>
+'use strict';
+
+const STORAGE_KEY = 'habit-tracker:v1';
+const MAX_HABITS = 10;
+const MAX_NAME = 20;
+
+const list = document.getElementById('habits');
+const emptyMsg = document.getElementById('empty');
+const form = document.getElementById('add-form');
+const input = document.getElementById('name-input');
+const addButton = document.getElementById('add-button');
+const formMsg = document.getElementById('form-msg');
+const limitMsg = document.getElementById('limit-msg');
+const saveWarning = document.getElementById('save-warning');
+
+// ---- 날짜 (로컬 시간대 기준 YYYY-MM-DD, toISOString 사용 안 함) ----
+
+function pad(n) {
+  return String(n).padStart(2, '0');
+}
+
+function dateKey(d) {
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function todayKey() {
+  return dateKey(new Date());
+}
+
+// ---- 저장 / 불러오기 ----
+
+function load() {
+  const empty = { version: 1, habits: [] };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return empty;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.habits)) return empty;
+
+    const ids = new Set();
+    const habits = [];
+    for (const h of data.habits) {
+      if (!h || typeof h.id !== 'string' || typeof h.name !== 'string' || !h.name.trim()) continue;
+      if (ids.has(h.id)) continue;
+      ids.add(h.id);
+      const dates = Array.isArray(h.dates)
+        ? [...new Set(h.dates.filter(d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))]
+        : [];
+      habits.push({ id: h.id, name: h.name, dates });
+    }
+    return { version: 1, habits };
+  } catch (e) {
+    return empty;
+  }
+}
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    saveWarning.hidden = true;
+  } catch (e) {
+    saveWarning.hidden = false;
+  }
+}
+
+const state = load();
+
+// ---- 그리기 (이름은 textContent로만 넣는다) ----
+
+function render() {
+  const today = todayKey();
+  list.textContent = '';
+
+  for (const h of state.habits) {
+    const done = h.dates.includes(today);
+
+    const li = document.createElement('li');
+    li.className = 'habit';
+    li.dataset.id = h.id;
+
+    const check = document.createElement('button');
+    check.type = 'button';
+    check.className = 'check';
+    check.dataset.action = 'toggle';
+    check.setAttribute('aria-pressed', String(done));
+    check.setAttribute('aria-label', h.name + ' 오늘 체크');
+    check.textContent = done ? '✓' : '';
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = h.name;
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'delete';
+    del.dataset.action = 'delete';
+    del.setAttribute('aria-label', h.name + ' 삭제');
+    del.textContent = '삭제';
+
+    li.append(check, name, del);
+    list.append(li);
+  }
+
+  emptyMsg.hidden = state.habits.length > 0;
+
+  const full = state.habits.length >= MAX_HABITS;
+  input.disabled = full;
+  addButton.disabled = full;
+  limitMsg.hidden = !full;
+}
+
+// ---- 조작 ----
+
+function newId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function addHabit(rawName) {
+  const name = rawName.trim();
+
+  if (state.habits.length >= MAX_HABITS) return false;
+  if (!name) {
+    formMsg.textContent = '습관 이름을 입력해 주세요.';
+    return false;
+  }
+  if (name.length > MAX_NAME) {
+    formMsg.textContent = '습관 이름은 ' + MAX_NAME + '자까지 쓸 수 있어요.';
+    return false;
+  }
+  const lower = name.toLowerCase();
+  if (state.habits.some(h => h.name.trim().toLowerCase() === lower)) {
+    formMsg.textContent = '이미 있는 습관이에요.';
+    return false;
+  }
+
+  state.habits.push({ id: newId(), name, dates: [] });
+  formMsg.textContent = '';
+  save();
+  render();
+  return true;
+}
+
+function deleteHabit(id) {
+  const habit = state.habits.find(h => h.id === id);
+  if (!habit) return;
+  if (!confirm("'" + habit.name + "' 습관과 모든 기록이 삭제됩니다. 삭제할까요?")) return;
+
+  state.habits = state.habits.filter(h => h.id !== id);
+  save();
+  render();
+}
+
+function toggleToday(id) {
+  const habit = state.habits.find(h => h.id === id);
+  if (!habit) return;
+
+  const today = todayKey();
+  const i = habit.dates.indexOf(today);
+  if (i === -1) habit.dates.push(today);
+  else habit.dates.splice(i, 1);
+
+  save();
+  render();
+
+  // 다시 그리면 버튼이 새로 만들어지므로 키보드 포커스를 되돌려 준다
+  const btn = list.querySelector('[data-id="' + id + '"] [data-action="toggle"]');
+  if (btn) btn.focus();
+}
+
+form.addEventListener('submit', e => {
+  e.preventDefault();
+  if (addHabit(input.value)) input.value = '';
+  input.focus();
+});
+
+input.addEventListener('input', () => {
+  formMsg.textContent = '';
+});
+
+list.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const id = btn.closest('li').dataset.id;
+  if (btn.dataset.action === 'toggle') toggleToday(id);
+  else if (btn.dataset.action === 'delete') deleteHabit(id);
+});
+
+render();
+</script>
+</body>
+</html>
