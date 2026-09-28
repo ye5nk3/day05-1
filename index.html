@@ -5,20 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>습관 체크</title>
 <style>
+/* 색·간격·글꼴 크기는 여기 변수만 바꾸면 전체에 반영된다 */
 :root {
-  --bg: #f5f6f8;
+  color-scheme: light;
+  --bg: #f3f6f4;
   --card: #ffffff;
-  --text: #1f2933;
-  --muted: #6b7280;
-  --line: #d9dde3;
-  --green: #2ea043;
-  --gray: #e3e6ea;
+  --text: #16241d;
+  --muted: #66746c;
+  --line: #dfe5e1;
+  --line-strong: #c3cdc7;
+  --green: #1f8443;
+  --green-dark: #17693a;
+  --green-soft: #e4f3e9;
+  --gray: #e3e8e5;
+  --gray-hover: #d3dad6;
   --danger: #c0392b;
-  --radius: 10px;
+  --danger-soft: #fbeae8;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(22, 36, 29, 0.06), 0 4px 14px rgba(22, 36, 29, 0.05);
   --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
 }
 
 * { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
@@ -27,48 +38,78 @@ body {
   font-family: var(--font);
   font-size: 16px;
   line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
 }
 
 main {
   max-width: 480px;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: 32px 16px 56px;
 }
 
+/* 헤더: 제목 + 오늘 완료 수 */
 .top {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-h1 { margin: 0; font-size: 24px; }
+h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
 
-.progress { margin: 0; font-size: 18px; font-weight: 600; }
-.progress.all-done { color: var(--green); }
+.progress {
+  margin: 0;
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: background-color 0.2s, color 0.2s;
+}
 
-.today-label { margin: 2px 0 16px; color: var(--muted); font-size: 14px; }
+.progress.all-done {
+  background: var(--green);
+  color: #fff;
+}
+
+.today-label { margin: 6px 0 20px; color: var(--muted); font-size: 14px; }
 
 .warning {
   margin: 0 0 12px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: 1px solid var(--danger);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   color: var(--danger);
-  background: #fff;
+  background: var(--danger-soft);
   font-size: 14px;
 }
 
-.empty { margin: 0 0 16px; color: var(--muted); }
+.empty {
+  margin: 0 0 16px;
+  padding: 28px 16px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-align: center;
+}
 
+/* 습관 카드 */
 .habits { list-style: none; margin: 0 0 16px; padding: 0; }
 
 .habit {
-  margin-bottom: 8px;
-  padding: 12px;
+  margin-bottom: 10px;
+  padding: 14px 14px 12px;
   background: var(--card);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
 .row {
@@ -78,8 +119,8 @@ h1 { margin: 0; font-size: 24px; }
 }
 
 .info { flex: 1; min-width: 0; }
-.info .name { display: block; overflow-wrap: anywhere; }
-.info .streak { display: block; color: var(--muted); font-size: 13px; }
+.info .name { display: block; font-size: 17px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.info .streak { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; font-weight: 500; }
 
 button {
   font: inherit;
@@ -91,16 +132,19 @@ button:focus-visible, input:focus-visible {
   outline-offset: 2px;
 }
 
+/* 오늘 체크 버튼 */
 .check {
   flex: none;
-  width: 40px;
-  height: 40px;
-  border: 2px solid var(--line);
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--line-strong);
   border-radius: 50%;
   background: var(--card);
   color: #fff;
-  font-size: 20px;
+  font-size: 22px;
+  font-weight: 700;
   line-height: 1;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.1s;
 }
 
 .check[aria-pressed="true"] {
@@ -108,82 +152,125 @@ button:focus-visible, input:focus-visible {
   border-color: var(--green);
 }
 
+.check:active { transform: scale(0.94); }
+
+/* 삭제 버튼은 눈에 덜 띄게 */
 .delete {
   flex: none;
-  min-width: 40px;
-  height: 40px;
+  min-width: 44px;
+  height: 44px;
   padding: 0 10px;
   border: 0;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
+  transition: background-color 0.15s, color 0.15s;
 }
 
-.delete:hover { color: var(--danger); }
-
-/* 지난 7일 칸: 왼쪽이 6일 전, 맨 오른쪽이 오늘 */
+/* 지난 7일 칸: 왼쪽이 6일 전, 맨 오른쪽이 오늘.
+   칸 사이 여백은 버튼 안쪽 padding으로 만들어 터치 영역을 넓게 잡는다 */
 .week {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-  margin-top: 10px;
+  margin: 12px -3px 0;
 }
 
 .day {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
-  padding: 0;
+  padding: 0 3px;
   border: 0;
   background: none;
   color: var(--muted);
 }
 
+.day:focus-visible { outline: none; }
+.day:focus-visible .box { outline: 2px solid var(--green); outline-offset: 2px; }
+
 .day .box {
   display: block;
   width: 100%;
-  height: 32px;
+  height: 30px;
   border: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--gray);
+  transition: background-color 0.15s, transform 0.1s;
 }
 
 .day.done .box { background: var(--green); }
 .day.today .box { border-color: var(--text); }
-.day.today .dow { color: var(--text); font-weight: 600; }
+.day:active .box { transform: scale(0.94); }
 .day .dow { font-size: 12px; line-height: 1.4; }
+.day.today .dow { color: var(--text); font-weight: 700; }
 
-form { display: flex; gap: 8px; }
+/* 새 습관 추가 */
+form {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
 
 form input {
   flex: 1;
   min-width: 0;
   height: 44px;
-  padding: 0 12px;
+  padding: 0 14px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
+  background: #fbfcfb;
+  color: var(--text);
   font: inherit;
+}
+
+form input::placeholder { color: #8a978f; }
+
+form input:focus-visible {
+  border-color: var(--green);
+  outline-offset: 0;
 }
 
 form button {
   flex: none;
   height: 44px;
-  padding: 0 16px;
+  padding: 0 20px;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: var(--green);
   color: #fff;
+  font-weight: 600;
+  transition: background-color 0.15s, transform 0.1s;
 }
+
+form button:active:not(:disabled) { transform: scale(0.97); }
 
 form input:disabled, form button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.msg { min-height: 1.5em; margin: 8px 0 0; font-size: 14px; color: var(--danger); }
-.limit { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.msg { min-height: 1.5em; margin: 10px 4px 0; font-size: 14px; color: var(--danger); }
+.limit { margin: 10px 4px 0; font-size: 14px; color: var(--muted); }
+
+/* 마우스가 있는 환경에서만 hover 효과 (터치에서 눌린 채 남는 것 방지) */
+@media (hover: hover) {
+  .check:hover { border-color: var(--green); }
+  .check[aria-pressed="true"]:hover { background: var(--green-dark); border-color: var(--green-dark); }
+  .delete:hover { background: var(--danger-soft); color: var(--danger); }
+  .day:hover .box { background: var(--gray-hover); }
+  .day.done:hover .box { background: var(--green-dark); }
+  form button:hover:not(:disabled) { background: var(--green-dark); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
 </style>
 </head>
 <body>
