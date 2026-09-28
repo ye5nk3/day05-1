@@ -12,6 +12,7 @@
   --muted: #6b7280;
   --line: #d9dde3;
   --green: #2ea043;
+  --gray: #e3e6ea;
   --danger: #c0392b;
   --radius: 10px;
   --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
@@ -34,7 +35,19 @@ main {
   padding: 24px 16px 48px;
 }
 
-h1 { margin: 0 0 16px; font-size: 24px; }
+.top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h1 { margin: 0; font-size: 24px; }
+
+.progress { margin: 0; font-size: 18px; font-weight: 600; }
+.progress.all-done { color: var(--green); }
+
+.today-label { margin: 2px 0 16px; color: var(--muted); font-size: 14px; }
 
 .warning {
   margin: 0 0 12px;
@@ -51,9 +64,6 @@ h1 { margin: 0 0 16px; font-size: 24px; }
 .habits { list-style: none; margin: 0 0 16px; padding: 0; }
 
 .habit {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   margin-bottom: 8px;
   padding: 12px;
   background: var(--card);
@@ -61,7 +71,15 @@ h1 { margin: 0 0 16px; font-size: 24px; }
   border-radius: var(--radius);
 }
 
-.habit .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.info { flex: 1; min-width: 0; }
+.info .name { display: block; overflow-wrap: anywhere; }
+.info .streak { display: block; color: var(--muted); font-size: 13px; }
 
 button {
   font: inherit;
@@ -103,6 +121,40 @@ button:focus-visible, input:focus-visible {
 
 .delete:hover { color: var(--danger); }
 
+/* 지난 7일 칸: 왼쪽이 6일 전, 맨 오른쪽이 오늘 */
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+}
+
+.day .box {
+  display: block;
+  width: 100%;
+  height: 32px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--gray);
+}
+
+.day.done .box { background: var(--green); }
+.day.today .box { border-color: var(--text); }
+.day.today .dow { color: var(--text); font-weight: 600; }
+.day .dow { font-size: 12px; line-height: 1.4; }
+
 form { display: flex; gap: 8px; }
 
 form input {
@@ -136,7 +188,11 @@ form input:disabled, form button:disabled {
 </head>
 <body>
 <main>
-  <h1>오늘의 습관</h1>
+  <header class="top">
+    <h1>오늘의 습관</h1>
+    <p id="progress" class="progress" aria-live="polite">0/0 완료</p>
+  </header>
+  <p id="today-label" class="today-label"></p>
 
   <p id="save-warning" class="warning" role="alert" hidden>저장하지 못했어요. 브라우저의 저장 공간 설정을 확인해 주세요.</p>
 
@@ -157,6 +213,7 @@ form input:disabled, form button:disabled {
 const STORAGE_KEY = 'habit-tracker:v1';
 const MAX_HABITS = 10;
 const MAX_NAME = 20;
+const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
 const list = document.getElementById('habits');
 const emptyMsg = document.getElementById('empty');
@@ -166,6 +223,8 @@ const addButton = document.getElementById('add-button');
 const formMsg = document.getElementById('form-msg');
 const limitMsg = document.getElementById('limit-msg');
 const saveWarning = document.getElementById('save-warning');
+const progress = document.getElementById('progress');
+const todayLabel = document.getElementById('today-label');
 
 // ---- 날짜 (로컬 시간대 기준 YYYY-MM-DD, toISOString 사용 안 함) ----
 
@@ -179,6 +238,28 @@ function dateKey(d) {
 
 function todayKey() {
   return dateKey(new Date());
+}
+
+// base 기준 n일 전 (월말·서머타임 경계에서도 안전하도록 년·월·일로 만든다)
+function daysAgo(base, n) {
+  return new Date(base.getFullYear(), base.getMonth(), base.getDate() - n);
+}
+
+function labelKo(d) {
+  return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + DOW[d.getDay()] + '요일';
+}
+
+// ---- 연속 기록: 오늘을 했으면 오늘부터, 아니면 어제부터 거꾸로 끊기기 전까지 ----
+
+function streakOf(habit, base) {
+  const done = new Set(habit.dates);
+  let n = done.has(dateKey(base)) ? 0 : 1;
+  let count = 0;
+  while (done.has(dateKey(daysAgo(base, n)))) {
+    count++;
+    n++;
+  }
+  return count;
 }
 
 // ---- 저장 / 불러오기 ----
@@ -221,28 +302,52 @@ const state = load();
 
 // ---- 그리기 (이름은 textContent로만 넣는다) ----
 
+let renderedDay = '';
+
 function render() {
-  const today = todayKey();
+  const base = new Date();
+  const today = dateKey(base);
+  renderedDay = today;
+
   list.textContent = '';
+  todayLabel.textContent = labelKo(base);
+
+  let doneCount = 0;
 
   for (const h of state.habits) {
-    const done = h.dates.includes(today);
+    const marked = new Set(h.dates);
+    const doneToday = marked.has(today);
+    if (doneToday) doneCount++;
 
     const li = document.createElement('li');
     li.className = 'habit';
     li.dataset.id = h.id;
 
+    // 윗줄: 오늘 체크 버튼 · 이름 · 연속 기록 · 삭제
+    const row = document.createElement('div');
+    row.className = 'row';
+
     const check = document.createElement('button');
     check.type = 'button';
     check.className = 'check';
-    check.dataset.action = 'toggle';
-    check.setAttribute('aria-pressed', String(done));
+    check.dataset.action = 'check';
+    check.dataset.date = today;
+    check.setAttribute('aria-pressed', String(doneToday));
     check.setAttribute('aria-label', h.name + ' 오늘 체크');
-    check.textContent = done ? '✓' : '';
+    check.textContent = doneToday ? '✓' : '';
+
+    const info = document.createElement('div');
+    info.className = 'info';
 
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = h.name;
+
+    const streak = document.createElement('span');
+    streak.className = 'streak';
+    streak.textContent = streakOf(h, base) + '일 연속';
+
+    info.append(name, streak);
 
     const del = document.createElement('button');
     del.type = 'button';
@@ -251,13 +356,48 @@ function render() {
     del.setAttribute('aria-label', h.name + ' 삭제');
     del.textContent = '삭제';
 
-    li.append(check, name, del);
+    row.append(check, info, del);
+
+    // 아랫줄: 지난 7일 칸 (왼쪽이 6일 전, 맨 오른쪽이 오늘)
+    const week = document.createElement('div');
+    week.className = 'week';
+    week.setAttribute('role', 'group');
+    week.setAttribute('aria-label', h.name + ' 지난 7일');
+
+    for (let n = 6; n >= 0; n--) {
+      const d = daysAgo(base, n);
+      const key = dateKey(d);
+      const on = marked.has(key);
+
+      const day = document.createElement('button');
+      day.type = 'button';
+      day.className = 'day' + (on ? ' done' : '') + (n === 0 ? ' today' : '');
+      day.dataset.action = 'day';
+      day.dataset.date = key;
+      day.setAttribute('aria-label', labelKo(d) + ', ' + (on ? '완료' : '미완료'));
+
+      const box = document.createElement('span');
+      box.className = 'box';
+
+      const dow = document.createElement('span');
+      dow.className = 'dow';
+      dow.textContent = DOW[d.getDay()];
+
+      day.append(box, dow);
+      week.append(day);
+    }
+
+    li.append(row, week);
     list.append(li);
   }
 
-  emptyMsg.hidden = state.habits.length > 0;
+  const total = state.habits.length;
+  progress.textContent = doneCount + '/' + total + ' 완료';
+  progress.classList.toggle('all-done', total > 0 && doneCount === total);
 
-  const full = state.habits.length >= MAX_HABITS;
+  emptyMsg.hidden = total > 0;
+
+  const full = total >= MAX_HABITS;
   input.disabled = full;
   addButton.disabled = full;
   limitMsg.hidden = !full;
@@ -304,20 +444,22 @@ function deleteHabit(id) {
   render();
 }
 
-function toggleToday(id) {
+// 오늘 체크 버튼과 7일 칸은 같은 데이터(dates)를 바꾼다.
+// key는 버튼이 그려질 때 박아 둔 날짜라서, 사용자가 본 날짜 그대로 바뀐다.
+function toggleDate(id, key, action) {
   const habit = state.habits.find(h => h.id === id);
   if (!habit) return;
 
-  const today = todayKey();
-  const i = habit.dates.indexOf(today);
-  if (i === -1) habit.dates.push(today);
+  const i = habit.dates.indexOf(key);
+  if (i === -1) habit.dates.push(key);
   else habit.dates.splice(i, 1);
 
   save();
   render();
 
   // 다시 그리면 버튼이 새로 만들어지므로 키보드 포커스를 되돌려 준다
-  const btn = list.querySelector('[data-id="' + id + '"] [data-action="toggle"]');
+  const target = action === 'check' ? '.check' : '.day[data-date="' + key + '"]';
+  const btn = list.querySelector('[data-id="' + id + '"] ' + target);
   if (btn) btn.focus();
 }
 
@@ -335,9 +477,21 @@ list.addEventListener('click', e => {
   const btn = e.target.closest('button[data-action]');
   if (!btn) return;
   const id = btn.closest('li').dataset.id;
-  if (btn.dataset.action === 'toggle') toggleToday(id);
-  else if (btn.dataset.action === 'delete') deleteHabit(id);
+  const action = btn.dataset.action;
+  if (action === 'delete') deleteHabit(id);
+  else toggleDate(id, btn.dataset.date, action);
 });
+
+// ---- 자정 경과: 오늘 날짜가 바뀌었으면 전체를 다시 그린다 ----
+
+function checkNewDay() {
+  if (todayKey() !== renderedDay) render();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkNewDay();
+});
+setInterval(checkNewDay, 60 * 1000);
 
 render();
 </script>
