@@ -569,6 +569,14 @@ list.addEventListener('click', e => {
   else toggleDate(id, btn.dataset.date, action);
 });
 
+// ---- 다른 탭에서 저장이 바뀌면 그 내용을 따라간다 ----
+// 따라가지 않으면 오래된 화면에서 한 번 누르는 순간 다른 탭의 기록을 통째로 덮어쓴다
+window.addEventListener('storage', e => {
+  if (e.key !== null && e.key !== STORAGE_KEY) return;   // key가 null이면 저장소 전체 삭제
+  state.habits = load().habits;
+  render();
+});
+
 // ---- 자정 경과: 오늘 날짜가 바뀌었으면 전체를 다시 그린다 ----
 
 function checkNewDay() {
